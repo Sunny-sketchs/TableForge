@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Extraction Dashboard</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Load Lucide Icons for aesthetic components (FIXED IMPORT) -->
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    <script>
+        // Lucide is loaded via the UMD bundle, which exposes the global 'lucide' object.
+        // We assign the necessary functions to the window object for easy access in App.js
+        window.createIcons = lucide.createIcons;
+        window.icons = lucide.icons;
+    </script>
+
+    <style>
+        /* Custom scrollbar for output area */
+        .output-scroll::-webkit-scrollbar {
+            width: 8px;
+        }
+        .output-scroll::-webkit-scrollbar-thumb {
+            background-color: #a5b4fc; /* Indigo-300 */
+            border-radius: 4px;
+        }
+        .output-scroll::-webkit-scrollbar-track {
+            background-color: #f1f5f9; /* Gray-100 */
+        }
+        /* Style for the file input to make it look clean */
+        input[type="file"]::file-selector-button {
+            background-color: #e0f2f1; /* Green-50 */
+            color: #06b6d4; /* Cyan-600 */
+            border: none;
+            padding: 0.6rem 1rem;
+            margin-right: 1rem;
+            border-radius: 0.5rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background-color 0.15s ease-in-out;
+        }
+        input[type="file"]::file-selector-button:hover {
+            background-color: #ccfbf1; /* Cyan-100 */
+        }
+        [v-cloak] { display: none; }
+    </style>
+</head>
+<body class="bg-gray-50 font-sans antialiased">
+
+    <!-- Main Container -->
+    <div id="app" class="p-4 sm:p-8">
+        <div class="max-w-7xl mx-auto">
+
+            <!-- Header -->
+            <div class="flex justify-between items-center mb-8">
+                <h1 class="text-4xl font-extrabold text-gray-900 flex items-center">
+                    <i data-lucide="zap" class="w-7 h-7 mr-3 text-indigo-600"></i> Extraction Dashboard
+                </h1>
+            </div>
+
+            <!-- Upload Section Card -->
+            <div class="bg-white p-6 rounded-xl shadow-xl mb-10 border-t-4 border-indigo-600">
+                <h2 class="text-2xl font-semibold text-gray-700 mb-4 flex items-center border-b pb-3 border-gray-200">
+                    <i data-lucide="upload" class="w-6 h-6 mr-2 text-indigo-500"></i> Upload New Document
+                </h2>
+                <div class="flex flex-col md:flex-row gap-4 items-end pt-2">
+                    <div class="flex-grow w-full">
+                        <label for="pdfFileInput" class="sr-only">Choose PDF</label>
+                        <input
+                            type="file"
+                            id="pdfFileInput"
+                            accept="application/pdf"
+                            class="w-full text-sm text-gray-600 file:py-2.5 file:px-4 border border-gray-300 rounded-lg bg-white shadow-sm"
+                            onchange="App.handleFileChange(event)"
+                        />
+                    </div>
+                    <button
+                        id="uploadButton"
+                        onclick="App.handleUpload()"
+                        disabled
+                        class="w-full md:w-auto flex items-center justify-center px-6 py-2.5 rounded-lg font-bold transition duration-150 shadow-md bg-gray-300 text-gray-600 cursor-not-allowed"
+                    >
+                        <i data-lucide="upload" class="w-5 h-5 mr-2"></i>
+                        <span>Upload</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Task Table Card -->
+            <div class="bg-white p-6 rounded-xl shadow-xl border-t-4 border-indigo-600">
+                <h2 class="text-2xl font-semibold text-gray-700 mb-6 flex items-center border-b pb-3 border-gray-200">
+                    <i data-lucide="list" class="w-6 h-6 mr-2 text-indigo-500"></i> Extraction Queue
+                </h2>
+
+                <div id="taskPlaceholder" class="text-gray-500 py-8 text-center border-2 border-dashed border-gray-300 rounded-lg hidden">
+                    Upload a PDF to begin tracking extraction tasks.
+                </div>
+
+                <div class="overflow-x-auto">
+                    <table id="taskTable" class="min-w-full divide-y divide-gray-200 hidden">
+                        <thead class="bg-indigo-50">
+                            <tr>
+                                <th class="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">File Name</th>
+                                <th class="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Status</th>
+                                <th class="px-4 py-3 text-center text-xs font-bold text-gray-700 uppercase tracking-wider">Action</th>
+                                <th class="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider w-2/5">Extracted Output / Error</th>
+                            </tr>
+                        </thead>
+                        <tbody id="taskTableBody" class="bg-white divide-y divide-gray-200">
+                            <!-- Tasks will be rendered here -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Custom Modal -->
+            <div id="customModal" class="fixed inset-0 bg-gray-900 bg-opacity-70 flex items-center justify-center z-50 p-4 hidden">
+                <div class="bg-white p-6 rounded-xl shadow-2xl w-full max-w-sm transform scale-100 transition-transform duration-300 border-t-4 border-red-500">
+                    <h3 class="text-xl font-bold text-red-600 mb-3 flex items-center">
+                        <i data-lucide="alert-triangle" class="w-6 h-6 mr-2"></i> Notification
+                    </h3>
+                    <p id="modalMessage" class="text-gray-700 mb-6"></p>
+                    <button
+                        onclick="App.hideModal()"
+                        class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 rounded-lg transition duration-150 shadow-md"
+                    >
+                        Acknowledge
+                    </button>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // Initialize Lucide icons
+            if (window.createIcons) {
+                window.createIcons();
+            }
+            // Initialize the application logic
+            App.init();
+        });
+
+        const BASE_URL = 'http://127.0.0.1:8000/api';
+
+        const App = {
+            tasks: [], // { docId, fileName, taskId, status, output, tempId }
+            selectedFile: null,
+            uploadButton: null,
+            fileInput: null,
+
+            init() {
+                this.uploadButton = document.getElementById('uploadButton');
+                this.fileInput = document.getElementById('pdfFileInput');
+                this.renderTasks();
+            },
+
+            // --- UI/Modal Logic ---
+
+            showModal(message) {
+                document.getElementById('modalMessage').textContent = message;
+                document.getElementById('customModal').classList.remove('hidden');
+            },
+
+            hideModal() {
+                document.getElementById('customModal').classList.add('hidden');
+            },
+
+            updateUploadButton(fileName) {
+                if (fileName && fileName.endsWith('.pdf')) {
+                    this.uploadButton.textContent = 'Upload';
+                    this.uploadButton.disabled = false;
+                    this.uploadButton.classList.remove('bg-gray-300', 'text-gray-600', 'cursor-not-allowed');
+                    this.uploadButton.classList.add('bg-indigo-600', 'hover:bg-indigo-700', 'text-white');
+                    this.uploadButton.querySelector('i').setAttribute('data-lucide', 'upload');
+                    window.createIcons();
+                } else {
+                    this.uploadButton.textContent = 'Upload';
+                    this.uploadButton.disabled = true;
+                    this.uploadButton.classList.add('bg-gray-300', 'text-gray-600', 'cursor-not-allowed');
+                    this.uploadButton.classList.remove('bg-indigo-600', 'hover:bg-indigo-700', 'text-white');
+                    this.uploadButton.querySelector('i').setAttribute('data-lucide', 'upload');
+                    window.createIcons();
+                }
+            },
+
+            handleFileChange(event) {
+                const file = event.target.files[0];
+                if (file) {
+                    if (file.type !== "application/pdf") {
+                        this.showModal("Unsupported file type. Only PDF files are allowed.");
+                        this.selectedFile = null;
+                        event.target.value = null; // Clear the input
+                        this.updateUploadButton(null);
+                        return;
+                    }
+                    this.selectedFile = file;
+                    this.updateUploadButton(file.name);
+                } else {
+                    this.selectedFile = null;
+                    this.updateUploadButton(null);
+                }
+            },
+
+            // --- API Communication ---
+
+            async callApi(endpoint, options = {}, isPolling = false) {
+                try {
+                    const response = await fetch(endpoint, options);
+                    const data = await response.json();
+
+                    if (!response.ok) {
+                        const detail = data.detail || response.statusText || 'Unknown Error';
+                        throw new Error(`[HTTP ${response.status}] ${detail}`);
+                    }
+
+                    if (data.success === false) {
+                        const errMsg = data.error?.message || data.error || 'Unknown API failure.';
+                        throw new Error(`[API Error] ${errMsg}`);
+                    }
+
+                    return data.result || data;
+                } catch (err) {
+                    console.error('API Call Failed:', err);
+                    throw err;
+                }
+            },
+
+            // --- 4. Render Task Status ---
+            getIconHtml(iconName, className = '') {
+                // Ensure lucide object is available globally
+                const iconComponent = window.icons[iconName];
+                if (!iconComponent) return '';
+                const svg = iconComponent.toSvg({ class: `w-4 h-4 mr-1 ${className}` });
+                return svg;
+            },
+
+            getStatusPill(status) {
+                let classes, iconName, iconClass = '';
+                switch(status) {
+                    case 'Complete':
+                        classes = 'text-green-700 bg-green-100 border-green-300';
+                        iconName = 'check-circle';
+                        break;
+                    case 'Processing...': case 'Task Queued': case 'Triggering...':
+                        classes = 'text-yellow-700 bg-yellow-100 border-yellow-300 animate-pulse';
+                        iconName = 'clock';
+                        iconClass = 'animate-spin'; // Add spin to the icon when processing
+                        break;
+                    case 'Ready to Trigger':
+                        classes = 'text-blue-700 bg-blue-100 border-blue-300';
+                        iconName = 'list';
+                        break;
+                    case 'Uploading...':
+                        classes = 'text-purple-700 bg-purple-100 border-purple-300';
+                        iconName = 'loader';
+                        iconClass = 'animate-spin';
+                        break;
+                    case 'Upload Failed': case 'Trigger Failed': case 'Timed Out':
+                        classes = 'text-red-700 bg-red-100 border-red-300';
+                        iconName = 'x-circle';
+                        break;
+                    default:
+                        classes = 'text-gray-700 bg-gray-100 border-gray-300';
+                        iconName = 'server-off';
+                }
+                // Use window.icons for lookup after global variable is set
+                const iconSvg = window.icons[iconName] ? window.icons[iconName].toSvg({ class: `w-3 h-3 mr-1 ${iconClass}` }) : '';
+                return `<span class="inline-flex items-center px-3 py-1 text-xs font-medium rounded-full border ${classes}">${iconSvg}${status}</span>`;
+            },
+
+            renderTasks() {
+                const tableBody = document.getElementById('taskTableBody');
+                tableBody.innerHTML = '';
+
+                if (this.tasks.length === 0) {
+                    document.getElementById('taskPlaceholder').classList.remove('hidden');
+                    document.getElementById('taskTable').classList.add('hidden');
+                    return;
+                }
+
+                document.getElementById('taskPlaceholder').classList.add('hidden');
+                document.getElementById('taskTable').classList.remove('hidden');
+
+                this.tasks.forEach(task => {
+                    const row = document.createElement('tr');
+                    row.className = 'hover:bg-gray-50 transition duration-150';
+
+                    // 1. File Name
+                    const fileNameCell = document.createElement('td');
+                    fileNameCell.className = 'px-4 py-4 text-sm font-medium text-gray-900 max-w-[200px] truncate';
+                    fileNameCell.textContent = task.fileName;
+                    row.appendChild(fileNameCell);
+
+                    // 2. Status
+                    const statusCell = document.createElement('td');
+                    statusCell.className = 'px-4 py-4 whitespace-nowrap text-center';
+                    statusCell.innerHTML = this.getStatusPill(task.status);
+                    row.appendChild(statusCell);
+
+                    // 3. Action Button
+                    const actionCell = document.createElement('td');
+                    actionCell.className = 'px-4 py-4 whitespace-nowrap text-center';
+
+                    const isReadyToTrigger = task.status === 'Ready to Trigger';
+                    const isDisabled = !isReadyToTrigger || this.isAnyTaskLoading();
+
+                    const buttonClass = isReadyToTrigger && !this.isAnyTaskLoading()
+                        ? 'bg-indigo-600 hover:bg-indigo-700 text-white'
+                        : 'bg-gray-200 text-gray-500 cursor-not-allowed';
+
+                    const buttonIcon = (task.status === 'Processing...' || task.status === 'Task Queued')
+                        ? this.getIconHtml('loader', 'animate-spin')
+                        : this.getIconHtml('play');
+
+                    const buttonText = (task.status === 'Processing...' || task.status === 'Task Queued')
+                        ? 'Processing...'
+                        : 'Start Extraction';
+
+                    const button = document.createElement('button');
+                    button.disabled = isDisabled;
+                    button.className = `flex items-center justify-center mx-auto px-4 py-2 text-sm font-bold rounded-lg transition duration-150 shadow-md ${buttonClass}`;
+                    button.innerHTML = buttonIcon + buttonText;
+
+                    if (isReadyToTrigger) {
+                         button.onclick = () => this.triggerTask(task);
+                    }
+                    actionCell.appendChild(button);
+                    row.appendChild(actionCell);
+
+                    // 4. Output / Error
+                    const outputCell = document.createElement('td');
+                    outputCell.className = 'px-4 py-4 text-sm text-gray-800';
+
+                    let outputContent = '';
+                    if (task.output && task.status === 'Complete') {
+                        let jsonOutput;
+                        try {
+                            jsonOutput = (typeof task.output === 'string')
+                                ? JSON.parse(task.output)
+                                : task.output;
+                        } catch (e) {
+                            jsonOutput = task.output; // If not valid JSON, treat as string
+                        }
+
+                        const jsonString = (typeof jsonOutput === 'object')
+                            ? JSON.stringify(jsonOutput, null, 2)
+                            : String(jsonOutput);
+
+                        outputContent = `
+                            <div class="bg-gray-50 text-indigo-700 p-2 rounded-md max-h-32 overflow-y-auto border border-gray-300 output-scroll">
+                                <pre class="font-mono text-xs whitespace-pre-wrap break-words">${jsonString}</pre>
+                            </div>
+                        `;
+                    } else if (task.output && (task.status.includes('Failed') || task.status.includes('Timed Out'))) {
+                        const errorMsg = task.output.error || JSON.stringify(task.output);
+                        outputContent = `
+                            <div class="bg-red-50 text-red-700 p-2 rounded-md max-h-32 overflow-y-auto border border-red-300 output-scroll">
+                                <span class="font-bold block mb-1">Error:</span>
+                                <pre class="font-mono text-xs whitespace-pre-wrap break-words">${errorMsg}</pre>
+                            </div>
+                        `;
+                    } else if (task.status === 'Processing...') {
+                        outputContent = `<span class="text-gray-500 italic flex items-center">${this.getIconHtml('code')}Awaiting result from API...</span>`;
+                    } else if (task.tempId) {
+                        outputContent = `<span class="text-gray-500 italic flex items-center">${this.getIconHtml('clock')}Internal ID: ${task.tempId}</span>`;
+                    }
+
+                    outputCell.innerHTML = outputContent;
+                    row.appendChild(outputCell);
+                    tableBody.appendChild(row);
+                });
+                // Re-initialize Lucide icons for the newly rendered rows
+                window.createIcons();
+            },
+
+            isAnyTaskLoading() {
+                return this.tasks.some(t => t.status === 'Uploading...' || t.status === 'Triggering...');
+            },
+
+            updateTask(identifier, isTempId, updates) {
+                this.tasks = this.tasks.map(task => {
+                    const match = isTempId ? task.tempId === identifier : task.docId === identifier;
+                    return match ? { ...task, ...updates } : task;
+                });
+                this.renderTasks();
+            },
+
+            // --- 3. Fetch Output (Polling) ---
+            fetchOutput(docId, taskId) {
+                this.updateTask(docId, false, { status: 'Processing...' });
+
+                // Increased polling settings for longer tasks
+                const maxAttempts = 120; // 4 minutes timeout (120 * 2s)
+                const pollInterval = 2000; // 2 second interval
+                let attempts = 0;
+
+                const polling = async () => {
+                    if (attempts >= maxAttempts) {
+                        this.updateTask(docId, false, { status: 'Timed Out', output: { error: 'Task processing timed out after 4 minutes. Please check your FastAPI console for errors.' } });
+                        return;
+                    }
+
+                    attempts++;
+
+                    try {
+                        const endpoint = `${BASE_URL}/taskfetch_output?task_id=${taskId}`;
+                        // No exponential backoff needed here, fixed interval is better for task monitoring
+                        const data = await this.callApi(endpoint, { method: 'POST' }, true);
+
+                        // Look for the 'output' key in the API response
+                        const outputData = data.output;
+
+                        // Check for completion: output key exists and is not null/empty string
+                        if (outputData && outputData !== 'null' && outputData !== null) {
+                            // Task completed successfully
+                            this.updateTask(docId, false, { status: 'Complete', output: outputData });
+                            return;
+                        }
+
+                        // If task is still processing (output is null/empty), poll again
+                        setTimeout(polling, pollInterval);
+                    } catch (e) {
+                        this.updateTask(docId, false, { status: 'Fetch Failed', output: { error: e.message } });
+                    }
+                };
+                setTimeout(polling, pollInterval); // Start polling after the first interval
+            },
+
+            // --- 2. Task Trigger ---
+            async triggerTask(taskToTrigger) {
+                const docId = taskToTrigger.docId;
+                this.updateTask(docId, false, { status: 'Triggering...', output: null });
+
+                try {
+                    const endpoint = `${BASE_URL}/tasktrigger_task?docs=${docId}`;
+                    const data = await this.callApi(endpoint, { method: 'POST' });
+
+                    const taskId = data.id || data.Id; // Handles both 'id' and 'Id'
+
+                    if (taskId) {
+                        this.updateTask(docId, false, { taskId: taskId, status: 'Task Queued' });
+                        this.fetchOutput(docId, taskId);
+                    } else {
+                        throw new Error('Trigger successful but TaskID missing in response. Check FastAPI JSON structure.');
+                    }
+                } catch (e) {
+                    this.updateTask(docId, false, { status: 'Trigger Failed', output: { error: e.message } });
+                }
+            },
+
+            // --- 1. Document Upload ---
+            async handleUpload() {
+                if (!this.selectedFile) {
+                    this.showModal('Please select a PDF file to upload.');
+                    return;
+                }
+
+                // Disable button and update UI
+                this.uploadButton.disabled = true;
+                this.fileInput.disabled = true;
+
+                const file = this.selectedFile;
+                const formData = new FormData();
+                formData.append('file', file, file.name);
+
+                const tempId = `temp-${Date.now()}`;
+
+                // Add task placeholder to the start of the list
+                this.tasks = [
+                    { docId: null, fileName: file.name, taskId: null, status: 'Uploading...', output: null, tempId: tempId },
+                    ...this.tasks,
+                ];
+                this.renderTasks();
+
+                try {
+                    const data = await this.callApi(
+                        `${BASE_URL}/documentupload_pdf`,
+                        { method: 'POST', body: formData }
+                    );
+
+                    const docId = data.id || data.Id; // Handles both 'id' and 'Id'
+
+                    if (docId) {
+                        // Update the temporary task with the real docId
+                        this.updateTask(tempId, true, { docId: docId, status: 'Ready to Trigger', taskId: null, output: null, tempId: null });
+
+                        // Clear input field and selected file reference
+                        this.fileInput.value = null;
+                        this.selectedFile = null;
+                        this.updateUploadButton(null);
+                    } else {
+                        throw new Error('Upload successful but DocID missing in response. Check FastAPI JSON structure.');
+                    }
+                } catch (e) {
+                    this.updateTask(tempId, true, { status: 'Upload Failed', output: { error: e.message }, tempId: null });
+                } finally {
+                    // Re-enable input and button
+                    this.uploadButton.disabled = false;
+                    this.fileInput.disabled = false;
+                    this.updateUploadButton(this.selectedFile ? this.selectedFile.name : null);
+                }
+            }
+        };
+    </script>
+</body>
+</html>

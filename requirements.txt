@@ -1,0 +1,33 @@
+# CORE BACKEND & ASYNC
+fastapi
+fastapi-middleware
+uvicorn[standard]
+python-dotenv
+pydantic
+
+# LLM & ORCHESTRATION (Google Gemini)
+google-genai
+tenacity # For handling API retries (Production Ready)
+
+# RAG & LANGCHAIN
+langchain
+langchain-core
+langchain-text-splitters
+langchain-community
+chromadb
+PyPDF2 # For PDF reading
+sentence-transformers # For local embeddings (fast dev)
+
+# POSTGRESQL & DATABASE (For Metadata and Logs)
+asyncpg
+databases # Async ORM layer for FastAPI
+sqlalchemy # For defining models
+
+# AGENT TOOLS
+duckduckgo-search # Web Search
+arxiv # ArXiv Search
+psycopg2-binary
+
+
+react
+import { Upload, Play, Loader, FileText, CheckCircle, XCircle } from 'lucide-react';
