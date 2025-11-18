@@ -1,7 +1,7 @@
 # backend\main
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-
+from backend.deamon import deamon
 from backend.api.document_api import document_api
 from backend.api.task_api import task_api
 from backend.middlewares.exception_handlers import catch_exception_middleware
@@ -40,15 +40,11 @@ def shutdown():
     print(f'on application shutdown')
     return 0
 
-# CRITICAL FIX: Changed prefix from /api/document to /api
-# This assumes document_api.py contains the full path /documentupload_pdf
-app.include_router(document_api, prefix="/api")
 
-# CRITICAL FIX: Changed prefix from /api/task to /api
-# This assumes task_api.py contains the full paths /tasktrigger_task and /taskfetch_output
+
+app.include_router(document_api, prefix="/api")
 app.include_router(task_api, prefix="/api")
 
 
 if __name__ == '__main__':
-    # CRITICAL FIX: Changed port from 8080 to 8000 to match frontend's BASE_URL
     uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")

@@ -1,29 +1,26 @@
-# backend\utils\util
-import os
-from pydantic import BaseModel
-from typing import Any
-from uuid import uuid4
 from datetime import datetime, timezone
-
-class JasonResponse(BaseModel):
-    success: bool = False
-    error: dict = {}
-    result: Any = {}
+from uuid import uuid4
+from typing import Optional
 
 
-def get_unique_number():
-    return str(uuid4()).lower()
-
-def get_current_datetime() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec='milliseconds').replace('+00:00', 'Z')
+def get_unique_number() -> str:
+    """Generates a UUID for use as a unique ID."""
+    return str(uuid4())
 
 
-def get_storage_absolute_path(projectId: str, documentId: str, documentName: str):
-    return os.path.join("Multi_Agent_System", f"{projectId}", f"{documentId}", f"{documentName}")
+def get_current_datetime() -> datetime:
+    """Returns the current UTC datetime."""
+    return datetime.now(timezone.utc)
 
 
-class Response(BaseModel):
-    Id: str
-    # createdTs: datetime
-    # modifiedTs: datetime
-    # execution: bool
+class Response:
+    """
+    A simple structure used in service layers to package return data.
+    """
+
+    def __init__(self, Id: Optional[str] = None, data: Optional[dict] = None):
+        self.Id = Id
+        self.data = data
+
+    def __repr__(self):
+        return f"Response(Id={self.Id}, data={self.data})"

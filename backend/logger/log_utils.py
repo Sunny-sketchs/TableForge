@@ -1,18 +1,24 @@
 import logging
 
 
-def setup_logger(name="Muiti-Agent-logger"):
-    logger=logging.getLogger(name)
+def setup_logger(name="Multi-Agent-logger"):
+    """
+    Sets up a standard Python logger with a StreamHandler (console output).
+    """
+    logger = logging.getLogger(name)
     logger.setLevel(logging.DEBUG)
 
-    ch=logging.StreamHandler()
+    ch = logging.StreamHandler()
     ch.setLevel(logging.DEBUG)
 
-    formatter=logging.Formatter("[%(asctime)s] [%(levelname)s] --- [%(message)s]")
+    # Improved formatter with module name and line number
+    formatter = logging.Formatter(
+        "[%(asctime)s] [%(levelname)s] [%(name)s] [%(module)s:%(lineno)d] --- %(message)s"
+    )
     ch.setFormatter(formatter)
 
-    if not logger.hasHandlers():
+    # This check prevents duplicate log messages if setup_logger is called multiple times.
+    if not logger.handlers:
         logger.addHandler(ch)
 
     return logger
-

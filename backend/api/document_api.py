@@ -20,20 +20,31 @@ async def upload_pdf(file: UploadFile = File(...)):
     try:
         os.makedirs(UPLOAD_DIRECTORY, exist_ok=True)
 
-        file_location = os.path.join(UPLOAD_DIRECTORY, file.filename)
+        # CRITICAL FIX: Sanitize filename to prevent directory traversal
+        filename = os.path.basename(file.filename)
+        if not filename:
+             raise HTTPException(status_code=400, detail="Invalid file name.")
 
+        file_location = os.path.join(UPLOAD_DIRECTORY, filename)
+
+        # Write the file content
         with open(file_location, "wb") as buffer:
             buffer.write(await file.read())
 
+        # Call the service layer (must be awaited as DocumentServices().create is now async)
         doc_id = await DocumentServices().create(
-            name_file=file.filename,
+            name_file=filename,
             path=file_location
         )
         return JSONResponse(content={"id": doc_id, "success": True})
 
+    except HTTPException:
+        # Re-raise explicit HTTPExceptions
+        raise
     except Exception as e:
+        # General exception handler for internal server errors
         print(f'Exception in uploading document: {e}')
         raise HTTPException(
             status_code=500,
-            detail=f"Error processing document service: {e}"
+            detail="Internal Server Error during document processing."
         )
