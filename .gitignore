@@ -1,1 +1,46 @@
+Python Caches
+
+pycache/
+*.pyc
+*.pyo
+*.pyd
+*.so
+.Python
+.tox/
+.mypy_cache/
+.pytest_cache/
+pip-log.txt
+pip-delete-this-directory.txt
+
+Virtual Environments
+
+venv/
+env/
+
+Data and Logs
+
+logs/
+.log
+.temp
+
+Node.js/Frontend (Vite/React)
+
+/frontend/node_modules
+/frontend/dist
+
+IDE and OS Files
+
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+Project Specifics
+
+1. Database Connection Credentials
+
 .env
+
+2. Uploaded User Files (CRITICAL for security)
+
+uploaded_pdfs/
