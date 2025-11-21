@@ -15,7 +15,7 @@ sqlalchemy~=2.0.43
 
 
 #Upload, Play, Loader, FileText, CheckCircle, XCircle from lucide-react
-
+httpx
 
 psycopg2~=2.9.11
 pandas~=2.3.2

@@ -1,14 +1,11 @@
 import asyncio
-from typing import Dict, List
 from backend.utils.util import get_unique_number, Response
-# CRITICAL FIX: Import 'engine' as it's needed for table_extracter
 from backend.db.connection import sessionlocal, engine
 from backend.db.models import TaskTable, DocumentTable
-# CRITICAL FIX: Import the necessary extraction logic
 from backend.service.table_extract import table_extracter
 from backend.logger.log_utils import setup_logger
 from sqlalchemy.orm import Session
-from sqlalchemy.exc import NoResultFound
+from sqlalchemy.exc import IntegrityError
 
 # Initialize logger
 service_logger = setup_logger(name="task_service")
@@ -16,23 +13,29 @@ service_logger = setup_logger(name="task_service")
 
 class TaskServices:
     """
-    Handles persistence and orchestration logic for task execution (PDF processing).
+    Manages the lifecycle of PDF extraction tasks, including creation,
+    triggering background processing, and fetching results.
     """
 
-    # Removed __init__ as its attributes (created_ts, modified_ts) are handled by DB defaults.
+    # --- Task Creation & Trigger (Executed on API POST /tasktrigger_task) ---
 
-    # CRITICAL FIX: Must be async to match task_api.py usage.
     async def create(self, docID: str) -> Response:
         """
-        Creates a new Task entry and immediately triggers the PDF table extraction 
-        in a non-blocking manner using asyncio.to_thread.
+        Creates a new task in the database and immediately triggers the
+        heavy lifting (PDF extraction) in a separate thread.
         """
-        taskId = get_unique_number()
+        task_id = get_unique_number()
         db: Session = sessionlocal()
 
-        # 1. Initial Task Creation (Status: PENDING)
+        # 1. Look up Document path
+        doc = db.query(DocumentTable).filter(DocumentTable.id == docID).first()
+        if not doc:
+            db.close()
+            raise Exception(f'Document not found with ID: {docID}')
+
+        # 2. Create and commit the task immediately (Status: PENDING)
         new_task = TaskTable(
-            id=taskId,
+            id=task_id,
             docID=docID,
             status='PENDING',
             output={},
@@ -40,100 +43,109 @@ class TaskServices:
 
         try:
             db.add(new_task)
+            # CRITICAL FIX: Commit the task immediately so the polling function can find it.
             db.commit()
             db.refresh(new_task)
+            service_logger.info(f"Task {task_id} created for Doc {docID}. Status: PPENDING.")
 
-            # 2. Retrieve Document Path
-            doc = db.query(DocumentTable).filter(DocumentTable.id == docID).first()
-            if not doc:
-                raise NoResultFound(f"Document with ID {docID} not found.")
+            # 3. Trigger asynchronous background processing
+            # We use asyncio.to_thread to run the synchronous table_extracter function
+            # without blocking the main FastAPI event loop.
+            await asyncio.create_task(
+                self._run_extraction_in_background(task_id, doc.storage_path)
+            )
 
-            # 3. Update Status to IN_PROCESS (before starting the long task)
-            new_task.status = 'IN_PROCESS'
+            # 4. Return the new Task ID immediately
+            return Response(Id=task_id)
+
+        except IntegrityError as e:
+            db.rollback()
+            service_logger.error(f'Database integrity error during task creation: {e}')
+            raise Exception("A database constraint was violated during task creation.")
+        except Exception as e:
+            db.rollback()
+            service_logger.exception(f'Database error during task creation.')
+            raise Exception(f'Database error during task creation: {e}')
+        finally:
+            db.close()
+
+    # --- Background Extraction Daemon Logic (Runs in worker thread) ---
+
+    async def _run_extraction_in_background(self, task_id: str, pdf_path: str):
+        """
+        Manages the asynchronous execution and status update of the extraction.
+        """
+        db: Session = sessionlocal()
+
+        # 1. Update status to IN_PROCESS
+        try:
+            db.query(TaskTable).filter(TaskTable.id == task_id).update({'status': 'IN_PROCESS'}, synchronize_session=False)
             db.commit()
+            service_logger.info(f"Task {task_id} status updated to IN_PROCESS.")
 
-            # 4. CRITICAL FIX: Run the synchronous table_extracter in a separate thread.
-            # This prevents the application from blocking the event loop.
-            table_names = await asyncio.to_thread(
+            # 2. Execute the synchronous extraction in a separate thread
+            extracted_tables = await asyncio.to_thread(
                 table_extracter,
-                pdf_file_path=doc.storage_path,
-                doc_id=docID,
+                pdf_file_path=pdf_path,
+                doc_id=task_id,
                 db_engine=engine
             )
 
-            # 5. Final Task Update (Status: COMPLETE or FAILED)
-            if table_names:
-                new_task.status = 'COMPLETED'
-                new_task.output = {'extracted_tables': table_names, 'success': True}
-            else:
-                new_task.status = 'FAILED'
-                new_task.output = {'extracted_tables': [], 'success': False,
-                                   'reason': 'No tables found or extraction failed.'}
+            # 3. Determine final status and output
+            final_status = 'COMPLETED' if extracted_tables else 'FAILED'
+            output_data = {
+                "extracted_tables": extracted_tables,
+                "success": bool(extracted_tables),
+                "reason": "Extraction successful." if extracted_tables else "No tables found or extraction failed."
+            }
 
-            db.commit()
+            service_logger.info(f"Task {task_id} finished. Status: {final_status}.")
 
-        except NoResultFound:
-            db.rollback()
-            service_logger.error(f'Task creation failed: Document ID {docID} not found.')
-            raise Exception(f'Document ID {docID} not found.')
         except Exception as e:
-            db.rollback()
-            # If an error occurred after the task was created, mark it as FAILED
-            if taskId:
-                try:
-                    failed_task = db.query(TaskTable).filter(TaskTable.id == taskId).first()
-                    if failed_task:
-                        failed_task.status = 'FAILED'
-                        failed_task.output = {'success': False, 'reason': f'Server processing error: {e}'}
-                        db.commit()
-                except Exception as update_e:
-                    service_logger.error(f'Failed to update task status to FAILED: {update_e}')
+            service_logger.exception(f"Critical error during background extraction for Task {task_id}: {e}")
+            final_status = 'FAILED'
+            output_data = {"extracted_tables": [], "success": False, "reason": f"Critical server error: {e}"}
 
-            service_logger.exception(f'Database or processing error during task execution.')
-            raise Exception(f'Server error during task execution: {e}')
         finally:
-            db.close()
+            # 4. Update final status and output
+            try:
+                db.query(TaskTable).filter(TaskTable.id == task_id).update({
+                    'status': final_status,
+                    'output': output_data
+                }, synchronize_session=False)
+                db.commit()
+            except Exception as e:
+                service_logger.error(f"Failed to update final status for Task {task_id}: {e}")
+            finally:
+                db.close()
 
-        return Response(Id=taskId)
 
-    # CRITICAL FIX: Must be async to match task_api.py usage.
-    async def fetch(self, task_id: str) -> Dict:
+    # --- Task Fetch (Executed on API POST /taskfetch_output) ---
+
+    async def fetch(self, task_id: str) -> dict:
         """
-        Fetches the status and output of a task by ID.
+        Fetches the current status and output for a given task ID.
         """
         db: Session = sessionlocal()
+
+        # CRITICAL: Since database read is synchronous, run it in a thread as well.
+        task = await asyncio.to_thread(
+            db.query(TaskTable).filter(TaskTable.id == task_id).first
+        )
+
         try:
-            task = db.query(TaskTable).filter(TaskTable.id == task_id).first()
+            if not task:
+                service_logger.error(f"Task with ID {task_id} not found.")
+                raise Exception(f'Task not found: {task_id}')
 
-            if task:
-                # Return the full status and output data
-                return {
-                    'status': task.status,
-                    'output': task.output
-                }
-            else:
-                raise NoResultFound(f"Task with ID {task_id} not found.")
+            output_data = {
+                'status': task.status,
+                'output': task.output,
+            }
+            return output_data
 
-        except NoResultFound as e:
-            service_logger.error(str(e))
-            raise Exception(f'Task not found: {task_id}')
         except Exception as e:
-            service_logger.exception(f'TaskServices fetch error for ID {task_id}')
-            raise Exception(f'TaskServices fetch error : {e}')
-        finally:
-            db.close()
-
-    # CRITICAL FIX: Renamed for clarity and made async
-    async def get_in_process_tasks(self) -> List[TaskTable]:
-        """
-        Lists all tasks currently marked as 'IN_PROCESS'.
-        """
-        db: Session = sessionlocal()
-        try:
-            list_task = db.query(TaskTable).filter(TaskTable.status == "IN_PROCESS").all()
-            return list_task
-        except Exception as e:
-            service_logger.error(f'Error listing in-process tasks: {e}')
-            return []
+            service_logger.exception(f'TaskServices fetch error: {e}')
+            raise
         finally:
             db.close()

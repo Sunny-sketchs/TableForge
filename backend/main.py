@@ -1,16 +1,18 @@
-# backend\main
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from backend.deamon import deamon
+
 from backend.api.document_api import document_api
 from backend.api.task_api import task_api
+# --- NEW IMPORT ---
+from backend.api.chat_api import chat_api
+# ------------------
 from backend.middlewares.exception_handlers import catch_exception_middleware
 import uvicorn
 
 
 app = FastAPI(
     title="Multi Agent System API",
-    description="",
+    description="Backend API for document processing and task orchestration.",
 )
 
 
@@ -28,22 +30,24 @@ app.middleware("http")(catch_exception_middleware)
 
 @app.on_event("startup")
 def start():
-    print(f'Starting application...')
+    print('Starting application...')
     try:
-        print(f'Application Stated')
+        print('Application Stated')
     except Exception as e:
         print(f'Exception in startup of application: {e}')
 
 
 @app.on_event("shutdown")
 def shutdown():
-    print(f'on application shutdown')
+    print('on application shutdown')
     return 0
 
-
-
+# Using a common '/api' prefix
 app.include_router(document_api, prefix="/api")
 app.include_router(task_api, prefix="/api")
+# --- NEW ROUTER INCLUSION ---
+app.include_router(chat_api, prefix="/api")
+# ----------------------------
 
 
 if __name__ == '__main__':
