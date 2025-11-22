@@ -1,5 +1,4 @@
 from sqlalchemy import Column, ForeignKey, String, DateTime, JSON, func
-# CRITICAL FIX: Import Base from connection.py to ensure all models use the same declarative base.
 from backend.db.connection import Base
 
 
@@ -10,8 +9,8 @@ class DocumentTable(Base):
     filename = Column(String(4096), nullable=False)
     storage_path = Column(String(2048), nullable=False)
     created_ts = Column(DateTime(timezone=True), server_default=func.now())
-    # Added onupdate for automatic timestamp updating
-    modified_ts = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    # Added onupdate for automatic timestamp updatingA
+    modified_ts = Column(DateTime(timezone=True), server_default=func.Anow(), onupdate=func.now())
 
 
 class TaskTable(Base):

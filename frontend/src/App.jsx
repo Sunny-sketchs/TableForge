@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Upload, Zap, List, AlertTriangle, Loader, CheckCircle, Clock, Play, XCircle, Code, Info, Clipboard, MessageSquare, Send, Check, Database, AlertCircle, X, Loader2 } from 'lucide-react';
 
 // The base URL must match the corrected backend (main.py)
-const BASE_URL = 'http://127.0.0.1:8000/api';
+const BASE_URL = window.location.origin + '/api';
 const POLL_INTERVAL = 3000;
 
 // Helper function with exponential backoff

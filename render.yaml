@@ -1,0 +1,58 @@
+services:
+  - type: web
+    name: tableforge
+    env: python
+    region: oregon
+    plan: free
+    buildCommand: |
+      echo "=== Installing system dependencies for Camelot ==="
+      apt-get update
+      apt-get install -y \
+        ghostscript \
+        python3-tk \
+        libsm6 \
+        libxext6 \
+        libxrender-dev \
+        libgomp1 \
+        libglib2.0-0
+      
+      echo "=== Installing Python dependencies ==="
+      pip install --upgrade pip
+      pip install -r backend/requirements.txt
+      
+      echo "=== Building React frontend ==="
+      cd frontend
+      npm install
+      npm run build
+      cd ..
+      
+      echo "=== Build complete ==="
+      ls -la frontend/dist || echo "Warning: frontend/dist not found"
+      echo "Python packages installed:"
+      pip list | grep -E "(camelot|opencv|pdfminer)"
+
+    startCommand: cd backend && uvicorn main:app --host 0.0.0.0 --port 10000
+
+    healthCheckPath: /api/health
+
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: tableforge-db
+          property: connectionString
+
+      - key: GEMINI_API_KEY
+        sync: false  # You'll set this manually in Render dashboard
+
+      - key: PYTHON_VERSION
+        value: "3.10.0"
+
+      - key: NODE_VERSION
+        value: "18"
+
+databases:
+  - name: tableforge-db
+    plan: free
+    databaseName: tableforge
+    user: tableforge
+    region: oregon
