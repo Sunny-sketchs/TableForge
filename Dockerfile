@@ -26,7 +26,7 @@ RUN pip install --upgrade pip && pip install -r backend/requirements.txt
 
 # Copy and build frontend
 COPY frontend/package*.json frontend/
-RUN cd frontend && npm ci
+RUN cd frontend && npm install
 
 COPY frontend frontend
 RUN cd frontend && npm run build && ls -la dist
