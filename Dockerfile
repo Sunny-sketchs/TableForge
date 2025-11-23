@@ -1,10 +1,19 @@
 # Stage 1: Build frontend
 FROM node:20-slim as frontend_builder
 WORKDIR /app/frontend
+
+# Copy package files
 COPY frontend/package*.json ./
+
+# Change ownership so npm install has write permissions
+RUN chown -R node:node /app/frontend
 USER node
+
+# Install dependencies
 RUN npm install
 RUN npm audit fix --force
+
+# Copy source and build
 COPY frontend .
 RUN npm run build
 
@@ -24,10 +33,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
+# Install Python dependencies
 COPY backend/requirements.txt ./backend/
 RUN pip install --upgrade pip && pip install -r backend/requirements.txt
 
+# Copy backend code
 COPY backend ./backend
+
+# Copy built frontend from stage 1
 COPY --from=frontend_builder /app/frontend/dist ./frontend/dist
 
 EXPOSE 10000
