@@ -7,7 +7,6 @@ from backend.logger.log_utils import setup_logger
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 
-# Initialize logger
 service_logger = setup_logger(name="task_service")
 
 
@@ -31,6 +30,9 @@ class TaskServices:
         doc = db.query(DocumentTable).filter(DocumentTable.id == docID).first()
         if not doc:
             db.close()
+            # In a real app, you might want to raise a specific HTTPException here
+            # but raising a generic Exception will be caught by the middleware.
+            service_logger.error(f'Document not found with ID: {docID}')
             raise Exception(f'Document not found with ID: {docID}')
 
         # 2. Create and commit the task immediately (Status: PENDING)
@@ -46,11 +48,11 @@ class TaskServices:
             # CRITICAL FIX: Commit the task immediately so the polling function can find it.
             db.commit()
             db.refresh(new_task)
-            service_logger.info(f"Task {task_id} created for Doc {docID}. Status: PPENDING.")
+            service_logger.info(f"Task {task_id} created for Doc {docID}. Status: PENDING.")
 
             # 3. Trigger asynchronous background processing
-            # We use asyncio.to_thread to run the synchronous table_extracter function
-            # without blocking the main FastAPI event loop.
+            # We use asyncio.create_task to schedule the background work without blocking
+            # the return of this API call.
             await asyncio.create_task(
                 self._run_extraction_in_background(task_id, doc.storage_path)
             )
@@ -75,15 +77,19 @@ class TaskServices:
         """
         Manages the asynchronous execution and status update of the extraction.
         """
+        # Create a NEW session for this background thread
         db: Session = sessionlocal()
 
-        # 1. Update status to IN_PROCESS
         try:
-            db.query(TaskTable).filter(TaskTable.id == task_id).update({'status': 'IN_PROCESS'}, synchronize_session=False)
+            # 1. Update status to IN_PROCESS
+            # synchronize_session=False is more efficient for updates where we don't need the object back immediately
+            db.query(TaskTable).filter(TaskTable.id == task_id).update({'status': 'IN_PROCESS'},
+                                                                       synchronize_session=False)
             db.commit()
             service_logger.info(f"Task {task_id} status updated to IN_PROCESS.")
 
             # 2. Execute the synchronous extraction in a separate thread
+            # table_extracter is CPU/IO bound, so we run it in a thread pool to avoid blocking the async event loop
             extracted_tables = await asyncio.to_thread(
                 table_extracter,
                 pdf_file_path=pdf_path,
@@ -101,24 +107,30 @@ class TaskServices:
 
             service_logger.info(f"Task {task_id} finished. Status: {final_status}.")
 
-        except Exception as e:
-            service_logger.exception(f"Critical error during background extraction for Task {task_id}: {e}")
-            final_status = 'FAILED'
-            output_data = {"extracted_tables": [], "success": False, "reason": f"Critical server error: {e}"}
-
-        finally:
             # 4. Update final status and output
+            db.query(TaskTable).filter(TaskTable.id == task_id).update({
+                'status': final_status,
+                'output': output_data
+            }, synchronize_session=False)
+            db.commit()
+
+        except Exception as e:
+            db.rollback()
+            service_logger.exception(f"Critical error during background extraction for Task {task_id}: {e}")
+
+            # Attempt to save the error state to the DB
             try:
+                output_data = {"extracted_tables": [], "success": False, "reason": f"Critical server error: {str(e)}"}
                 db.query(TaskTable).filter(TaskTable.id == task_id).update({
-                    'status': final_status,
+                    'status': 'FAILED',
                     'output': output_data
                 }, synchronize_session=False)
                 db.commit()
-            except Exception as e:
-                service_logger.error(f"Failed to update final status for Task {task_id}: {e}")
-            finally:
-                db.close()
+            except Exception as db_e:
+                service_logger.error(f"Failed to update task {task_id} to FAILED state: {db_e}")
 
+        finally:
+            db.close()
 
     # --- Task Fetch (Executed on API POST /taskfetch_output) ---
 
@@ -128,14 +140,14 @@ class TaskServices:
         """
         db: Session = sessionlocal()
 
-        # CRITICAL: Since database read is synchronous, run it in a thread as well.
-        task = await asyncio.to_thread(
-            db.query(TaskTable).filter(TaskTable.id == task_id).first
-        )
-
         try:
+            # CRITICAL: Since database read is synchronous, run it in a thread as well for high concurrency.
+            task = await asyncio.to_thread(
+                lambda: db.query(TaskTable).filter(TaskTable.id == task_id).first()
+            )
+
             if not task:
-                service_logger.error(f"Task with ID {task_id} not found.")
+                # Don't log error here as it might just be a wrong ID from user, not a system error
                 raise Exception(f'Task not found: {task_id}')
 
             output_data = {
@@ -145,7 +157,9 @@ class TaskServices:
             return output_data
 
         except Exception as e:
-            service_logger.exception(f'TaskServices fetch error: {e}')
+            # Log only unexpected errors, not "not found"
+            if "Task not found" not in str(e):
+                service_logger.exception(f'TaskServices fetch error: {e}')
             raise
         finally:
             db.close()

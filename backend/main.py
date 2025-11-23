@@ -5,6 +5,7 @@ from fastapi.responses import FileResponse
 import os
 from pathlib import Path
 
+# Import routers
 from backend.api.document_api import document_api
 from backend.api.task_api import task_api
 from backend.api.chat_api import chat_api
@@ -12,10 +13,11 @@ from backend.middlewares.exception_handlers import catch_exception_middleware
 import uvicorn
 
 app = FastAPI(
-    title="Multi Agent System API",
-    description="Backend API for document processing and task orchestration.",
+    title="TableForge API",
+    description="Backend API for document processing, task orchestration, and LLM chat.",
 )
 
+# --- 1. Middleware Setup ---
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -24,14 +26,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# middleware exception handler
 app.middleware("http")(catch_exception_middleware)
 
 
+# --- 2. Application Events ---
 @app.on_event("startup")
 def start():
     print('Starting application...')
     try:
+        # Database tables are created in get_db.py (imported via routers)
         print('Application Started')
     except Exception as e:
         print(f'Exception in startup of application: {e}')
@@ -39,40 +42,40 @@ def start():
 
 @app.on_event("shutdown")
 def shutdown():
-    print('on application shutdown')
-    return 0
+    print('Application shutting down...')
 
 
-# Health check endpoint for Render
+# --- 3. API Routes (MUST be defined before StaticFiles) ---
+# Health check
 @app.get("/api/health")
 async def health_check():
     return {"status": "healthy", "service": "tableforge"}
 
 
-# Using a common '/api' prefix - API ROUTES MUST COME FIRST
+# Register Routers
 app.include_router(document_api, prefix="/api")
 app.include_router(task_api, prefix="/api")
 app.include_router(chat_api, prefix="/api")
 
-# ============================================
-# STATIC FILE SERVING FOR REACT FRONTEND (FIXED)
-# ============================================
-# Get the frontend dist directory path
+# --- 4. Static File Serving (Frontend) ---
+# This allows FastAPI to serve the React app built into 'frontend/dist'
+
+# Resolve the path to the 'frontend/dist' directory relative to this file
 BASE_DIR = Path(__file__).resolve().parent.parent
 FRONTEND_DIST = BASE_DIR / "frontend" / "dist"
 
-# Only serve static files if the dist folder exists (production)
 if FRONTEND_DIST.exists() and FRONTEND_DIST.is_dir():
     print(f"✓ Serving React frontend from: {FRONTEND_DIST}")
 
-    # FIXED: Serve the entire dist directory from the root path.
-    # The html=True ensures index.html is served as the fallback for React routing.
+    # Mount the static files directory to the root
+    # 'html=True' ensures that index.html is served for the root path
     app.mount("/", StaticFiles(directory=str(FRONTEND_DIST), html=True), name="static")
-
 else:
-    print(f"⚠ Frontend dist folder not found at: {FRONTEND_DIST}")
-    print("  Run 'cd frontend && npm run build' to create it.")
+    print(f"⚠ Frontend build not found at: {FRONTEND_DIST}")
+    print("  (This is expected during local dev if you haven't run 'npm run build')")
+    print("  For local development, run the React frontend separately via 'npm run dev'.")
 
 if __name__ == '__main__':
-    # NOTE: The Dockerfile uses port 10000, but local dev usually uses 8000.
-    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
+    # Determine port from environment variable (Render uses PORT) or default to 8000
+    port = int(os.getenv("PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port, log_level="info")
