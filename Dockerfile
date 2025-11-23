@@ -13,8 +13,8 @@ USER node
 RUN npm install
 RUN npm audit fix --force
 
-# Copy source and build
-COPY frontend .
+# Copy source and build (with chown fix)
+COPY --chown=node:node frontend .
 RUN npm run build
 
 # Stage 2: Backend with Python
