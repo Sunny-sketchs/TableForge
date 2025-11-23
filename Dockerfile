@@ -1,5 +1,5 @@
 # Stage 1: Build frontend
-FROM node:20-slim as frontend_builder
+FROM node:20-slim AS frontend_builder
 WORKDIR /app/frontend
 
 # Copy package files
@@ -13,9 +13,11 @@ USER node
 RUN npm install
 RUN npm audit fix --force
 
-# Copy source and build (with chown fix)
+# 7/8: Copy files with correct ownership
 COPY --chown=node:node frontend .
-RUN npm run build
+
+# 8/8: Guarantee permissions and execute build in one shell session
+RUN chmod +x ./node_modules/.bin/* && npm run build
 
 # Stage 2: Backend with Python
 FROM python:3.10-slim
