@@ -55,7 +55,7 @@ app.include_router(task_api, prefix="/api")
 app.include_router(chat_api, prefix="/api")
 
 # ============================================
-# STATIC FILE SERVING FOR REACT FRONTEND
+# STATIC FILE SERVING FOR REACT FRONTEND (FIXED)
 # ============================================
 # Get the frontend dist directory path
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -65,37 +65,14 @@ FRONTEND_DIST = BASE_DIR / "frontend" / "dist"
 if FRONTEND_DIST.exists() and FRONTEND_DIST.is_dir():
     print(f"✓ Serving React frontend from: {FRONTEND_DIST}")
 
-    # Serve static assets (CSS, JS, images)
-    assets_dir = FRONTEND_DIST / "assets"
-    if assets_dir.exists():
-        app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
+    # FIXED: Serve the entire dist directory from the root path.
+    # The html=True ensures index.html is served as the fallback for React routing.
+    app.mount("/", StaticFiles(directory=str(FRONTEND_DIST), html=True), name="static")
 
-
-    # Catch-all route for React SPA (MUST BE LAST)
-    @app.get("/{full_path:path}")
-    async def serve_react_app(full_path: str):
-        """
-        Serve React frontend for all non-API routes.
-        This enables client-side routing.
-        """
-        # Don't interfere with API routes
-        if full_path.startswith("api/"):
-            return {"detail": "Not Found"}
-
-        # Serve specific file if it exists
-        file_path = FRONTEND_DIST / full_path
-        if file_path.exists() and file_path.is_file():
-            return FileResponse(str(file_path))
-
-        # Otherwise serve index.html (React handles routing)
-        index_path = FRONTEND_DIST / "index.html"
-        if index_path.exists():
-            return FileResponse(str(index_path))
-
-        return {"detail": "Frontend not found"}
 else:
     print(f"⚠ Frontend dist folder not found at: {FRONTEND_DIST}")
     print("  Run 'cd frontend && npm run build' to create it.")
 
 if __name__ == '__main__':
+    # NOTE: The Dockerfile uses port 10000, but local dev usually uses 8000.
     uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
