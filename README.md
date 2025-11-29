@@ -1,4 +1,4 @@
-# TableForge: High-Concurrency Data Intelligence Platform (ongoing)
+# TableForge: High-Concurrency Data Intelligence Platform
 
 **TableForge** is a robust, full-stack application designed to be a high-performance **Data Intelligence Platform**. Its core function is a two-phase process: **extracting complex tabular data** from PDFs and enabling **natural language querying (Q\&A)** over that data using large language models (LLMs).
 
